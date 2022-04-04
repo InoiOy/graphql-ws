@@ -1,82 +1,133 @@
-try:
-    from aiohttp import WSMsgType
-    from graphql_ws.aiohttp import AiohttpConnectionContext, AiohttpSubscriptionServer
-except ImportError:  # pragma: no cover
-    WSMsgType = None
-
-from unittest import mock
+import asyncio
+import sys
+from typing import Awaitable, Callable
 
 import pytest
+from aiohttp import WSMsgType
+from aiohttp.client import ClientWebSocketResponse
+from aiohttp.test_utils import TestClient
+from aiohttp.web import Application, WebSocketResponse
+from graphql import GraphQLSchema, build_schema
+from graphql_ws.aiohttp import AiohttpSubscriptionServer
 
-from graphql_ws.base import ConnectionClosedException
-
-if_aiohttp_installed = pytest.mark.skipif(
-    WSMsgType is None, reason="aiohttp is not installed"
-)
-
-
-class AsyncMock(mock.Mock):
-    def __call__(self, *args, **kwargs):
-        async def coro():
-            return super(AsyncMock, self).__call__(*args, **kwargs)
-
-        return coro()
+if sys.version_info >= (3, 8):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
 
 
-@pytest.fixture()
-def mock_ws():
-    ws = AsyncMock(spec=["receive", "send_str", "closed", "close"])
-    ws.closed = False
-    ws.receive.return_value = AsyncMock(spec=["type", "data"])
-    return ws
+AiohttpClientFactory = Callable[[Application], Awaitable[TestClient]]
 
 
-@if_aiohttp_installed
-@pytest.mark.asyncio
-class TestConnectionContext:
-    async def test_receive_good_data(self, mock_ws):
-        msg = mock_ws.receive.return_value
-        msg.type = WSMsgType.TEXT
-        msg.data = "test"
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        assert await connection_context.receive() == "test"
+def schema() -> GraphQLSchema:
+    spec = """
+    type Query {
+       dummy: String
+    }
+    type Subscription {
+      messages: String
+      error: String
+    }
+    schema {
+      query: Query
+      subscription: Subscription
+    }
+    """
 
-    async def test_receive_error(self, mock_ws):
-        msg = mock_ws.receive.return_value
-        msg.type = WSMsgType.ERROR
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        with pytest.raises(ConnectionClosedException):
-            await connection_context.receive()
+    async def messages_subscribe(root, _info):
+        await asyncio.sleep(0.1)
+        yield "foo"
+        await asyncio.sleep(0.1)
+        yield "bar"
 
-    async def test_receive_closing(self, mock_ws):
-        mock_ws.receive.return_value.type = WSMsgType.CLOSING
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        with pytest.raises(ConnectionClosedException):
-            await connection_context.receive()
+    async def error_subscribe(root, _info):
+        raise RuntimeError("baz")
 
-    async def test_receive_closed(self, mock_ws):
-        mock_ws.receive.return_value.type = WSMsgType.CLOSED
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        with pytest.raises(ConnectionClosedException):
-            await connection_context.receive()
-
-    async def test_send(self, mock_ws):
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        await connection_context.send("test")
-        mock_ws.send_str.assert_called_with('"test"')
-
-    async def test_send_closed(self, mock_ws):
-        mock_ws.closed = True
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        await connection_context.send("test")
-        mock_ws.send_str.assert_not_called()
-
-    async def test_close(self, mock_ws):
-        connection_context = AiohttpConnectionContext(ws=mock_ws)
-        await connection_context.close(123)
-        mock_ws.close.assert_called_with(code=123)
+    schema = build_schema(spec)
+    schema.subscription_type.fields["messages"].subscribe = messages_subscribe
+    schema.subscription_type.fields["messages"].resolve = lambda evt, _info: evt
+    schema.subscription_type.fields["error"].subscribe = error_subscribe
+    schema.subscription_type.fields["error"].resolve = lambda evt, _info: evt
+    return schema
 
 
-@if_aiohttp_installed
-def test_subscription_server_smoke():
-    AiohttpSubscriptionServer(schema=None)
+@pytest.fixture
+def client(
+    event_loop: asyncio.AbstractEventLoop, aiohttp_client: AiohttpClientFactory
+) -> TestClient:
+    subscription_server = AiohttpSubscriptionServer(schema())
+
+    async def subscriptions(request):
+        conn = WebSocketResponse(protocols=('graphql-ws',))
+        await conn.prepare(request)
+        await subscription_server.handle(conn)
+        return conn
+
+    app = Application()
+    app["subscription_server"] = subscription_server
+    app.router.add_get('/subscriptions', subscriptions)
+    return event_loop.run_until_complete(aiohttp_client(app))
+
+
+@pytest.fixture
+async def connection(client: TestClient) -> ClientWebSocketResponse:
+    conn = await client.ws_connect("/subscriptions")
+    yield conn
+    await conn.close()
+
+
+async def test_connection_closed_on_error(connection: ClientWebSocketResponse):
+    connection._writer.transport.write(b'0' * 500)
+    response = await connection.receive()
+    assert response.type == WSMsgType.CLOSE
+
+
+async def test_connection_init(connection: ClientWebSocketResponse):
+    await connection.send_str('{"type":"connection_init","payload":{}}')
+    response = await connection.receive()
+    assert response.type == WSMsgType.TEXT
+    assert response.data == '{"type": "connection_ack"}'
+
+
+async def test_connection_init_rejected_on_error(
+    monkeypatch, client: TestClient, connection: ClientWebSocketResponse
+):
+    # raise exception in AiohttpSubscriptionServer.on_connect
+    monkeypatch.setattr(
+        client.app["subscription_server"],
+        "on_connect",
+        AsyncMock(side_effect=RuntimeError()),
+    )
+    await connection.send_str('{"type":"connection_init", "payload": {}}')
+    response = await connection.receive()
+    assert response.type == WSMsgType.TEXT
+    assert response.json()['type'] == 'connection_error'
+
+
+async def test_messages_subscription(connection: ClientWebSocketResponse):
+    await connection.send_str('{"type":"connection_init","payload":{}}')
+    await connection.receive()
+    await connection.send_str(
+        '{"id":"1","type":"start","payload":{"query":"subscription MySub { messages }"}}'
+    )
+    first = await connection.receive_str()
+    assert (
+        first == '{"id": "1", "type": "data", "payload": {"data": {"messages": "foo"}}}'
+    )
+    second = await connection.receive_str()
+    assert (
+        second
+        == '{"id": "1", "type": "data", "payload": {"data": {"messages": "bar"}}}'
+    )
+    resolve_message = await connection.receive_str()
+    assert resolve_message == '{"id": "1", "type": "complete"}'
+
+
+async def test_subscription_resolve_error(connection: ClientWebSocketResponse):
+    await connection.send_str('{"type":"connection_init","payload":{}}')
+    await connection.receive()
+    await connection.send_str(
+        '{"id":"2","type":"start","payload":{"query":"subscription MySub { error }"}}'
+    )
+    error = await connection.receive_json()
+    assert error["payload"]["errors"][0]["message"] == "baz"

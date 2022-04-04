@@ -1,4 +1,3 @@
-from graphql.execution.executors.sync import SyncExecutor
 from rx import Observable, Observer
 
 from .base import BaseSubscriptionServer
@@ -6,7 +5,6 @@ from .constants import GQL_COMPLETE, GQL_CONNECTION_ACK, GQL_CONNECTION_ERROR
 
 
 class BaseSyncSubscriptionServer(BaseSubscriptionServer):
-    graphql_executor = SyncExecutor
 
     def on_operation_complete(self, connection_context, op_id):
         pass

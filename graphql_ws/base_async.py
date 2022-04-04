@@ -4,9 +4,10 @@ from abc import ABC, abstractmethod
 from types import CoroutineType, GeneratorType
 from typing import Any, Dict, List, Union
 from weakref import WeakSet
-
-from graphql.execution.executors.asyncio import AsyncioExecutor
 from promise import Promise
+
+from graphql import subscribe
+from graphql.language.parser import parse
 
 from graphql_ws import base
 
@@ -109,7 +110,6 @@ class BaseAsyncConnectionContext(base.BaseConnectionContext, ABC):
 
 
 class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
-    graphql_executor = AsyncioExecutor
 
     def __init__(self, schema, keep_alive=True, loop=None):
         self.loop = loop
@@ -145,14 +145,15 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
         # with this id.
         await connection_context.unsubscribe(op_id)
 
-        execution_result = self.execute(params)
+        request_string = params.pop("request_string")
+        query = parse(request_string)
+        result = await subscribe(self.schema, query, **params)
 
-        connection_context.register_operation(op_id, execution_result)
-        if hasattr(execution_result, "__aiter__"):
-            iterator = await execution_result.__aiter__()
-            connection_context.register_operation(op_id, iterator)
+        connection_context.register_operation(op_id, result)
+        if hasattr(result, "__aiter__"):
+            connection_context.register_operation(op_id, result)
             try:
-                async for single_result in iterator:
+                async for single_result in result:
                     if not connection_context.has_operation(op_id):
                         break
                     await self.send_execution_result(
@@ -162,13 +163,12 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
                 await self.send_error(connection_context, op_id, e)
         else:
             try:
-                if is_awaitable(execution_result):
-                    execution_result = await execution_result
                 await self.send_execution_result(
-                    connection_context, op_id, execution_result
+                    connection_context, op_id, result
                 )
             except Exception as e:
                 await self.send_error(connection_context, op_id, e)
+
         await self.send_message(connection_context, op_id, GQL_COMPLETE)
         await connection_context.unsubscribe(op_id)
         await self.on_operation_complete(connection_context, op_id)

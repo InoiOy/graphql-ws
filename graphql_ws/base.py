@@ -1,7 +1,7 @@
 import json
 from collections import OrderedDict
 
-from graphql import format_error, graphql
+from graphql import graphql
 
 from .constants import (
     GQL_CONNECTION_ERROR,
@@ -64,7 +64,6 @@ class BaseConnectionContext(object):
 
 
 class BaseSubscriptionServer(object):
-    graphql_executor = None
 
     def __init__(self, schema, keep_alive=True):
         self.schema = schema
@@ -112,7 +111,6 @@ class BaseSubscriptionServer(object):
             "variable_values": payload.get("variables"),
             "operation_name": payload.get("operationName"),
             "context_value": context,
-            "executor": self.graphql_executor(),
         }
 
     def on_open(self, connection_context):
@@ -150,7 +148,7 @@ class BaseSubscriptionServer(object):
             result["data"] = execution_result.data
         if execution_result.errors:
             result["errors"] = [
-                format_error(error) for error in execution_result.errors
+                error.formatted for error in execution_result.errors
             ]
         return result
 

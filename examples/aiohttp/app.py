@@ -2,7 +2,6 @@ import json
 
 from aiohttp import web
 from schema import schema
-from graphql import format_error
 from graphql_ws.aiohttp import AiohttpSubscriptionServer
 
 from template import render_graphiql
@@ -13,7 +12,7 @@ async def graphql_view(request):
     response = await schema.execute(payload.get("query", ""), return_promise=True)
     data = {}
     if response.errors:
-        data["errors"] = [format_error(e) for e in response.errors]
+        data["errors"] = [e.formatted for e in response.errors]
     if response.data:
         data["data"] = response.data
     jsondata = json.dumps(data,)
