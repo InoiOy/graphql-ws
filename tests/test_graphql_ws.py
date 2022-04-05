@@ -181,7 +181,7 @@ def test_execution_result_to_dict(ss):
     assert isinstance(result_dict, OrderedDict)
     assert result_dict == {
         "data": "DATA",
-        "errors": [{"message": "ER", "locations": None, "path": None}],
+        "errors": [{"message": "ER"}],
     }
 
 

@@ -22,32 +22,45 @@ AiohttpClientFactory = Callable[[Application], Awaitable[TestClient]]
 def schema() -> GraphQLSchema:
     spec = """
     type Query {
-       dummy: String
+        getMessage: String
+    }
+    type Mutation {
+        setMessage(var: String): String
+    }
+    type MessageResponse {
+        message: String
     }
     type Subscription {
-      messages: String
-      error: String
+        messages: [MessageResponse!]
+        error: String
     }
     schema {
-      query: Query
-      subscription: Subscription
+        query: Query
+        mutation: Mutation
+        subscription: Subscription
     }
     """
 
     async def messages_subscribe(root, _info):
         await asyncio.sleep(0.1)
-        yield "foo"
+        yield [{"message": "foo"}]
         await asyncio.sleep(0.1)
-        yield "bar"
+        yield [{"message": "bar"}]
 
     async def error_subscribe(root, _info):
         raise RuntimeError("baz")
+
+    def dummy(root, _info, **kwargs):
+        return "dummy response"
 
     schema = build_schema(spec)
     schema.subscription_type.fields["messages"].subscribe = messages_subscribe
     schema.subscription_type.fields["messages"].resolve = lambda evt, _info: evt
     schema.subscription_type.fields["error"].subscribe = error_subscribe
     schema.subscription_type.fields["error"].resolve = lambda evt, _info: evt
+    schema.query_type.fields["getMessage"].resolve = dummy
+    schema.mutation_type.fields["setMessage"].resolve = dummy
+
     return schema
 
 
@@ -108,16 +121,15 @@ async def test_messages_subscription(connection: ClientWebSocketResponse):
     await connection.send_str('{"type":"connection_init","payload":{}}')
     await connection.receive()
     await connection.send_str(
-        '{"id":"1","type":"start","payload":{"query":"subscription MySub { messages }"}}'
+        '{"id":"1","type":"start","payload":{"query":"subscription MySub { messages \n { message type } }"}}'
     )
     first = await connection.receive_str()
     assert (
-        first == '{"id": "1", "type": "data", "payload": {"data": {"messages": "foo"}}}'
+        first == '{"id": "1", "type": "data", "payload": {"data": {"messages": [{"message": "foo"}]}}}'
     )
     second = await connection.receive_str()
     assert (
-        second
-        == '{"id": "1", "type": "data", "payload": {"data": {"messages": "bar"}}}'
+        second == '{"id": "1", "type": "data", "payload": {"data": {"messages": [{"message": "bar"}]}}}'
     )
     resolve_message = await connection.receive_str()
     assert resolve_message == '{"id": "1", "type": "complete"}'
@@ -131,3 +143,29 @@ async def test_subscription_resolve_error(connection: ClientWebSocketResponse):
     )
     error = await connection.receive_json()
     assert error["payload"]["errors"][0]["message"] == "baz"
+
+async def test_messages_query(connection: ClientWebSocketResponse):
+    await connection.send_str('{"type":"connection_init","payload":{}}')
+    await connection.receive()
+    await connection.send_str(
+        '{"id":"1","type":"start","payload":{"query":"query MyQuery { getMessage }"}}'
+    )
+    first = await connection.receive_str()
+    assert (
+        first == '{"id": "1", "type": "data", "payload": {"data": {"getMessage": "dummy response"}}}'
+    )
+    resolve_message = await connection.receive_str()
+    assert resolve_message == '{"id": "1", "type": "complete"}'
+
+async def test_messages_mutation(connection: ClientWebSocketResponse):
+    await connection.send_str('{"type":"connection_init","payload":{}}')
+    await connection.receive()
+    await connection.send_str(
+        '{"id":"1","type":"start","payload":{"query":"mutation MyMutation($message: String) { setMessage(message: $message) }","variables":{"message":"test_value"}}}'
+    )
+    first = await connection.receive_str()
+    assert (
+        first == '{"id": "1", "type": "data", "payload": {"data": {"setMessage": "dummy response"}}}'
+    )
+    resolve_message = await connection.receive_str()
+    assert resolve_message == '{"id": "1", "type": "complete"}'

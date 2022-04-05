@@ -6,8 +6,7 @@ from typing import Any, Dict, List, Union
 from weakref import WeakSet
 from promise import Promise
 
-from graphql import subscribe
-from graphql.language.parser import parse
+from graphql import subscribe, execute, parse
 
 from graphql_ws import base
 
@@ -154,7 +153,11 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
 
         request_string = params.pop("request_string")
         query = parse(request_string)
-        result = await subscribe(self.schema, query, **params)
+
+        if request_string.startswith("subscription"):
+            result = await subscribe(self.schema, query, **params)
+        else:
+            result = execute(self.schema, query, **params)
 
         connection_context.register_operation(op_id, result)
         if hasattr(result, "__aiter__"):
@@ -170,6 +173,9 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
                 await self.send_error(connection_context, op_id, e)
         else:
             try:
+                if is_awaitable(result):
+                    result = await result
+
                 await self.send_execution_result(
                     connection_context, op_id, result
                 )
