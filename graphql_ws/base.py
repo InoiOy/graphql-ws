@@ -168,6 +168,7 @@ class BaseSubscriptionServer(object):
     def on_message(self, connection_context, message):
         try:
             if not isinstance(message, dict):
+                message = message.replace("\n", " ")
                 parsed_message = json.loads(message)
                 assert isinstance(parsed_message, dict), "Payload must be an object."
             else:
