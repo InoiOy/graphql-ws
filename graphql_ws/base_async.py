@@ -126,6 +126,13 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
         connection_context.remember_task(task)
         return task
 
+    def send_error(self, connection_context, op_id, error, error_type=None):
+        task = asyncio.ensure_future(
+            super().send_error(connection_context, op_id, error, error_type), loop=self.loop
+        )
+        connection_context.remember_task(task)
+        return task
+
     async def on_open(self, connection_context):
         pass
 
