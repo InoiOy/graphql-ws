@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python3.6
 # -*- coding: utf-8 -*-
 #
 # graphql_ws documentation build configuration file, created by
