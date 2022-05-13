@@ -96,6 +96,9 @@ class BaseAsyncConnectionContext(base.BaseConnectionContext, ABC):
         if getattr(async_iterator, "future", None) and async_iterator.future.cancel():
             await async_iterator.future
 
+        if hasattr(async_iterator, 'aclose'):
+            await async_iterator.aclose()
+
     async def unsubscribe_all(self):
         awaitables = [self.unsubscribe(op_id) for op_id in list(self.operations)]
         for task in self.pending_tasks:
@@ -161,7 +164,6 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
 
         connection_context.register_operation(op_id, result)
         if hasattr(result, "__aiter__"):
-            connection_context.register_operation(op_id, result)
             try:
                 async for single_result in result:
                     if not connection_context.has_operation(op_id):
