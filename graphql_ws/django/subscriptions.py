@@ -1,8 +1,5 @@
 from graphene_django.settings import graphene_settings
 from ..base_async import BaseAsyncConnectionContext, BaseAsyncSubscriptionServer
-from ..observable_aiter import setup_observable_extension
-
-setup_observable_extension()
 
 
 class ChannelsConnectionContext(BaseAsyncConnectionContext):

@@ -11,9 +11,8 @@ from graphql import subscribe, execute, parse
 from graphql_ws import base
 
 from .constants import GQL_COMPLETE, GQL_CONNECTION_ACK, GQL_CONNECTION_ERROR
-from .observable_aiter import setup_observable_extension
 
-setup_observable_extension()
+
 CO_ITERABLE_COROUTINE = inspect.CO_ITERABLE_COROUTINE
 
 

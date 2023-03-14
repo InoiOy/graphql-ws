@@ -1,9 +1,5 @@
 from asyncio import Future
 
-from rx.core import Observable
-from rx.internal import extensionmethod
-
-
 async def __aiter__(self):
     source = self
 
@@ -45,7 +41,3 @@ async def __aiter__(self):
             return value
 
     return AIterator()
-
-
-def setup_observable_extension():
-    extensionmethod(Observable)(__aiter__)
