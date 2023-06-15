@@ -86,7 +86,6 @@ class BaseSubscriptionServer(object):
         op_id = parsed_message.get("id")
         op_type = parsed_message.get("type")
         payload = parsed_message.get("payload")
-        print(f'got {op_type} message')
 
         if op_type == GQL_CONNECTION_INIT:
             return self.on_connection_init(connection_context, op_id, payload)
@@ -97,7 +96,6 @@ class BaseSubscriptionServer(object):
         elif op_type == (
             GQL_SUBSCRIBE if connection_context.transport_ws_protocol else GQL_START
         ):
-            print("subscribe/start message")
             assert isinstance(payload, dict), "The payload must be a dict"
             params = self.get_graphql_params(connection_context, payload)
             return self.on_start(connection_context, op_id, params)
