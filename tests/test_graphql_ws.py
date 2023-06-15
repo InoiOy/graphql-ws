@@ -11,6 +11,12 @@ from graphql.error import GraphQLError
 from graphql_ws import base, base_sync, constants
 
 
+class ConnectionContext(base.BaseConnectionContext):
+    def __init__(self):
+        super().__init__(None)
+        self.operations = {"yes": "1"}
+
+
 @pytest.fixture
 def cc():
     cc = base.BaseConnectionContext(ws=None)
@@ -169,6 +175,8 @@ def test_send_execution_result(ss):
     ss.execution_result_to_dict.return_value = {"res": "ult"}
     ss.send_message = mock.Mock()
     ss.send_message.return_value = "returned"
+
+    cc = ConnectionContext()
     assert "returned" == ss.send_execution_result(cc, "1", "result")
     ss.send_message.assert_called_with(cc, "1", constants.GQL_DATA, {"res": "ult"})
 

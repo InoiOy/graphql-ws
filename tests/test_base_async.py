@@ -11,6 +11,8 @@ pytestmark = pytest.mark.asyncio
 
 
 class AsyncMock(mock.MagicMock):
+    transport_ws_protocol = False
+
     async def __call__(self, *args, **kwargs):
         return super().__call__(*args, **kwargs)
 
@@ -58,7 +60,7 @@ async def test_message_str(server):
 
 async def test_message_invalid(server):
     server.send_error = AsyncMock()
-    await server.on_message(connection_context=None, message="'not-json")
+    await server.on_message(connection_context=AsyncMock(), message="'not-json")
     assert server.send_error.called
 
 
@@ -68,7 +70,7 @@ async def test_resolver(server):
     result.data = {"test": [1, 2]}
     result.errors = None
     await server.send_execution_result(
-        connection_context=None, op_id=1, execution_result=result
+        connection_context=AsyncMock(), op_id=1, execution_result=result
     )
     assert server.send_message.called
 
@@ -80,7 +82,7 @@ async def test_resolver_with_promise(server):
     result.data = {"test": [1, promise.Promise(lambda resolve, reject: resolve(2))]}
     result.errors = None
     await server.send_execution_result(
-        connection_context=None, op_id=1, execution_result=result
+        connection_context=AsyncMock(), op_id=1, execution_result=result
     )
     assert server.send_message.called
     assert result.data == {"test": [1, 2]}
@@ -94,7 +96,7 @@ async def test_resolver_with_nested_promise(server):
     result.data = {"test": [1, outer]}
     result.errors = None
     await server.send_execution_result(
-        connection_context=None, op_id=1, execution_result=result
+        connection_context=AsyncMock(), op_id=1, execution_result=result
     )
     assert server.send_message.called
     assert result.data == {"test": [1, {"in": 2}]}
