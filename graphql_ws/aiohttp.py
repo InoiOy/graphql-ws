@@ -12,11 +12,7 @@ class AiohttpConnectionContext(BaseAsyncConnectionContext):
         msg = await self.ws.receive()
         if msg.type == WSMsgType.TEXT:
             return msg.data
-        elif msg.type == WSMsgType.ERROR:
-            raise ConnectionClosedException()
-        elif msg.type == WSMsgType.CLOSING:
-            raise ConnectionClosedException()
-        elif msg.type == WSMsgType.CLOSED:
+        elif msg.type in [WSMsgType.ERROR, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.CLOSE]:
             raise ConnectionClosedException()
 
     async def send(self, data):
@@ -41,10 +37,10 @@ class AiohttpSubscriptionServer(BaseAsyncSubscriptionServer):
                 if connection_context.closed:
                     raise ConnectionClosedException()
                 message = await connection_context.receive()
+                self.on_message(connection_context, message)
             except ConnectionClosedException:
                 break
 
-            self.on_message(connection_context, message)
         await self.on_close(connection_context)
 
     async def handle(self, ws, request_context=None):
