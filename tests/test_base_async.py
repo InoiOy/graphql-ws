@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio
 
 
 class AsyncMock(mock.MagicMock):
-    transport_ws_protocol = False
+    sub_protocol = "graphql-ws"
 
     async def __call__(self, *args, **kwargs):
         return super().__call__(*args, **kwargs)

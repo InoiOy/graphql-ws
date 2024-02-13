@@ -10,7 +10,12 @@ from graphql import subscribe, execute, parse
 
 from graphql_ws import base
 
-from .constants import GQL_COMPLETE, GQL_CONNECTION_ACK, GQL_CONNECTION_ERROR
+from .constants import (
+    GRAPHQL_WS,
+    GQL_COMPLETE,
+    GQL_CONNECTION_ACK,
+    GQL_CONNECTION_ERROR,
+)
 
 
 CO_ITERABLE_COROUTINE = inspect.CO_ITERABLE_COROUTINE
@@ -145,7 +150,8 @@ class BaseAsyncSubscriptionServer(base.BaseSubscriptionServer, ABC):
             await self.on_connect(connection_context, payload)
             await self.send_message(connection_context, op_type=GQL_CONNECTION_ACK)
         except Exception as e:
-            await self.send_error(connection_context, op_id, e, GQL_CONNECTION_ERROR)
+            if connection_context.sub_protocol == GRAPHQL_WS:
+                await self.send_error(connection_context, op_id, e, GQL_CONNECTION_ERROR)
             await connection_context.close(1011)
 
     async def on_start(self, connection_context, op_id, params):

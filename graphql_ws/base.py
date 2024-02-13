@@ -4,6 +4,8 @@ from collections import OrderedDict
 from graphql import graphql
 
 from .constants import (
+    GRAPHQL_WS,
+    TRANSPORT_WS_PROTOCOL,
     GQL_COMPLETE,
     GQL_CONNECTION_ERROR,
     GQL_CONNECTION_INIT,
@@ -14,7 +16,6 @@ from .constants import (
     GQL_START,
     GQL_STOP,
     GQL_SUBSCRIBE,
-    TRANSPORT_WS_PROTOCOL,
 )
 
 
@@ -23,16 +24,16 @@ class ConnectionClosedException(Exception):
 
 
 class BaseConnectionContext(object):
-    transport_ws_protocol = False
+    sub_protocol = False
 
     def __init__(self, ws, request_context=None):
         self.ws = ws
         self.operations = {}
         self.request_context = request_context
 
-        self.transport_ws_protocol = request_context and (
-            request_context.get("sub_protocol") == TRANSPORT_WS_PROTOCOL
-        )
+        self.sub_protocol = None
+        if request_context:
+            self.sub_protocol = request_context.get("sub_protocol")
 
     def has_operation(self, op_id):
         return op_id in self.operations
@@ -82,35 +83,56 @@ class BaseSubscriptionServer(object):
     def execute(self, params):
         return graphql(self.schema, **dict(params, allow_subscriptions=True))
 
-    def process_message(self, connection_context, parsed_message):
-        op_id = parsed_message.get("id")
-        op_type = parsed_message.get("type")
-        payload = parsed_message.get("payload")
-
+    def _parse_apollo_message(self, connection_context, op_id, op_type, payload):
+        """Parse message for Apollo graphql-ws subprotocol."""
         if op_type == GQL_CONNECTION_INIT:
             return self.on_connection_init(connection_context, op_id, payload)
 
         elif op_type == GQL_CONNECTION_TERMINATE:
             return self.on_connection_terminate(connection_context, op_id)
 
-        elif op_type == (
-            GQL_SUBSCRIBE if connection_context.transport_ws_protocol else GQL_START
-        ):
+        elif op_type == GQL_START:
             assert isinstance(payload, dict), "The payload must be a dict"
             params = self.get_graphql_params(connection_context, payload)
             return self.on_start(connection_context, op_id, params)
 
-        elif op_type == (
-            GQL_COMPLETE if connection_context.transport_ws_protocol else GQL_STOP
-        ):
+        elif op_type == GQL_STOP:
             return self.on_stop(connection_context, op_id)
 
-        else:
-            return self.send_error(
-                connection_context,
-                op_id,
-                Exception("Invalid message type: {}.".format(op_type)),
-            )
+        return self.send_error(
+            connection_context,
+            op_id,
+            Exception("Invalid message type: {}.".format(op_type)),
+        )
+
+    def _parse_transport_ws_message(self, connection_context, op_id, op_type, payload):
+        """Parse message for graphql-transport-ws subprotocol."""
+        if op_type == GQL_CONNECTION_INIT:
+            return self.on_connection_init(connection_context, op_id, payload)
+
+        elif op_type == GQL_SUBSCRIBE:
+            assert isinstance(payload, dict), "The payload must be a dict"
+            params = self.get_graphql_params(connection_context, payload)
+            return self.on_start(connection_context, op_id, params)
+
+        elif op_type == GQL_COMPLETE:
+            return self.on_stop(connection_context, op_id)
+
+        return self.send_error(
+            connection_context,
+            op_id,
+            Exception("Invalid message type: {}.".format(op_type)),
+        )
+
+    def process_message(self, connection_context, parsed_message):
+        op_id = parsed_message.get("id")
+        op_type = parsed_message.get("type")
+        payload = parsed_message.get("payload")
+
+        if connection_context.sub_protocol == TRANSPORT_WS_PROTOCOL:
+            return self._parse_transport_ws_message(connection_context, op_id, op_type, payload)
+
+        return self._parse_apollo_message(connection_context, op_id, op_type, payload)
 
     def on_connection_init(self, connection_context, op_id, payload):
         raise NotImplementedError("on_connection_init method not implemented")
@@ -157,7 +179,7 @@ class BaseSubscriptionServer(object):
         return self.send_message(
             connection_context,
             op_id,
-            GQL_NEXT if connection_context.transport_ws_protocol else GQL_DATA,
+            GQL_DATA if connection_context.sub_protocol == GRAPHQL_WS else GQL_NEXT,
             result,
         )
 

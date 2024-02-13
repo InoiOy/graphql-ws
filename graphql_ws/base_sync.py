@@ -1,7 +1,12 @@
 from rx import Observable, Observer
 
 from .base import BaseSubscriptionServer
-from .constants import GQL_COMPLETE, GQL_CONNECTION_ACK, GQL_CONNECTION_ERROR
+from .constants import (
+    GRAPHQL_WS,
+    GQL_COMPLETE,
+    GQL_CONNECTION_ACK,
+    GQL_CONNECTION_ERROR,
+)
 
 
 class BaseSyncSubscriptionServer(BaseSubscriptionServer):
@@ -24,7 +29,8 @@ class BaseSyncSubscriptionServer(BaseSubscriptionServer):
             self.send_message(connection_context, op_type=GQL_CONNECTION_ACK)
 
         except Exception as e:
-            self.send_error(connection_context, op_id, e, GQL_CONNECTION_ERROR)
+            if connection_context.sub_protocol == GRAPHQL_WS:
+                self.send_error(connection_context, op_id, e, GQL_CONNECTION_ERROR)
             connection_context.close(1011)
 
     def on_start(self, connection_context, op_id, params):
