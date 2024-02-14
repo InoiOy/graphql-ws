@@ -24,9 +24,6 @@ class WsLibConnectionContext(BaseAsyncConnectionContext):
     def closed(self):
         return self.ws.open is False
 
-    async def close(self, code):
-        await self.ws.close(code)
-
 
 class WsLibSubscriptionServer(BaseAsyncSubscriptionServer):
     async def _handle(self, ws, request_context):

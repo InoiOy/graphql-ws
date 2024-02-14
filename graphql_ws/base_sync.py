@@ -1,4 +1,5 @@
-from rx import Observable, Observer
+from rx import Observable
+from rx.core import Observer
 
 from .base import BaseSubscriptionServer
 from .constants import (

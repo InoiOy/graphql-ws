@@ -16,6 +16,8 @@ from .constants import (
     GQL_START,
     GQL_STOP,
     GQL_SUBSCRIBE,
+    GQL_PING,
+    GQL_PONG,
 )
 
 
@@ -70,7 +72,7 @@ class BaseConnectionContext(object):
     def closed(self):
         raise NotImplementedError("closed property not implemented")
 
-    def close(self, code):
+    def close(self, code, message=''):
         raise NotImplementedError("close method not implemented")
 
 
@@ -79,6 +81,8 @@ class BaseSubscriptionServer(object):
     def __init__(self, schema, keep_alive=True):
         self.schema = schema
         self.keep_alive = keep_alive
+
+        self.pong_received = None
 
     def execute(self, params):
         return graphql(self.schema, **dict(params, allow_subscriptions=True))
@@ -117,6 +121,14 @@ class BaseSubscriptionServer(object):
 
         elif op_type == GQL_COMPLETE:
             return self.on_stop(connection_context, op_id)
+
+        elif op_type == GQL_PING:
+            return self.send_message(connection_context, op_type=GQL_PONG)
+
+        elif op_type == GQL_PONG:
+            if self.pong_received is not None:
+                self.pong_received.set()
+                return
 
         return self.send_error(
             connection_context,

@@ -2,6 +2,10 @@
 History
 =======
 
+0.4.5 (2024-02-14)
+==================
+- Support ping/pong with graphql-transport-ws protocol
+
 0.4.4 (2021-08-24)
 ==================
 - Fix: Readme syntax

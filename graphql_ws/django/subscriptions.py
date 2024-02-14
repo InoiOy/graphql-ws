@@ -16,9 +16,6 @@ class ChannelsConnectionContext(BaseAsyncConnectionContext):
     def closed(self):
         return self.socket_closed
 
-    async def close(self, code):
-        await self.ws.close(code=code)
-
     async def receive(self, code):
         """
         Unused, as the django consumer handles receiving messages and passes

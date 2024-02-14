@@ -23,8 +23,8 @@ class GeventConnectionContext(BaseConnectionContext):
     def closed(self):
         return self.ws.closed
 
-    def close(self, code):
-        self.ws.close(code)
+    def close(self, code, message=''):
+        self.ws.close(code=code, message=message.encode())
 
 
 class GeventSubscriptionServer(BaseSyncSubscriptionServer):
