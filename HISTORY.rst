@@ -2,7 +2,7 @@
 History
 =======
 
-0.4.5+inoi1 (2024-02-14)
+0.4.5.dev1(2024-02-14)
 ==================
 - Support ping/pong with graphql-transport-ws protocol
 
