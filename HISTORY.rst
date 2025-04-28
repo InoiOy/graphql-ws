@@ -2,6 +2,10 @@
 History
 =======
 
+0.4.6.dev1(2025-04-28)
+==================
+- Change Python 3.6 shebangs to Python 3
+
 0.4.5.dev1(2024-02-14)
 ==================
 - Support ping/pong with graphql-transport-ws protocol
